@@ -57,13 +57,13 @@ export default function LavaRush() {
   const initGame = useCallback((width, height) => {
     const groundY = height * GROUND_Y_RATIO;
     const platforms = [];
-    platforms.push({ x: 0, width: 260, y: groundY, cracked: false });
+    platforms.push({ x: 0, width: 260, y: groundY });
     let cursorX = 260;
     while (cursorX < width + 400) {
       const gap = rand(55, 100);
       const pw = rand(100, 190);
       cursorX += gap;
-      platforms.push({ x: cursorX, width: pw, y: groundY + rand(-14, 14), cracked: Math.random() < 0.1 });
+      platforms.push({ x: cursorX, width: pw, y: groundY + rand(-14, 14) });
       cursorX += pw;
     }
 
@@ -148,7 +148,7 @@ export default function LavaRush() {
         const gap = Math.min(rawGap, maxSafeGap);
         const pw = rand(95, 185);
         const x = s.lastPlatformRight + gap;
-        s.platforms.push({ x, width: pw, y: s.groundY + rand(-16, 16), cracked: Math.random() < 0.13 });
+        s.platforms.push({ x, width: pw, y: s.groundY + rand(-16, 16) });
         s.lastPlatformRight = x + pw;
       }
 
@@ -167,22 +167,10 @@ export default function LavaRush() {
           player.onGround = true;
           player.rot = 0;
           landed = true;
-          if (p.cracked && !p.cracking) {
-            p.cracking = true;
-            p.crackTimer = 14;
-          }
           break;
         }
       }
       if (!landed) player.onGround = false;
-
-      for (const p of s.platforms) {
-        if (p.cracking) {
-          p.crackTimer -= frameScale;
-          if (p.crackTimer <= 0) p.collapsed = true;
-        }
-      }
-      s.platforms = s.platforms.filter((p) => !p.collapsed || p.x > s.width);
 
       // Lava is a fixed hazard at the bottom, not a rising clock. Death only
       // comes from actually missing a jump — never from running out of time
@@ -248,25 +236,10 @@ export default function LavaRush() {
     ctx.globalAlpha = 1;
 
     for (const p of s.platforms) {
-      const wobble = p.cracking ? Math.sin(p.crackTimer * 2) * 2 : 0;
-      const isHazard = p.cracked; // visible warning the moment it exists, before you ever land on it
-      ctx.fillStyle = p.cracking ? COLORS.platformCracked : (isHazard ? '#3D2418' : COLORS.platform);
-      ctx.fillRect(p.x, p.y + wobble, p.width, height - (p.y + wobble));
-      ctx.fillStyle = p.cracking ? COLORS.lavaCore : (isHazard ? COLORS.lavaGlow : COLORS.platformEdge);
-      ctx.fillRect(p.x, p.y + wobble, p.width, 6);
-
-      if (isHazard && !p.cracking) {
-        // Jagged crack lines across the surface — a clear "this will give way" signal
-        ctx.strokeStyle = COLORS.lavaGlow;
-        ctx.lineWidth = 1.5;
-        ctx.beginPath();
-        const midX = p.x + p.width / 2;
-        ctx.moveTo(midX - p.width * 0.25, p.y + wobble);
-        ctx.lineTo(midX - p.width * 0.08, p.y + wobble + 5);
-        ctx.lineTo(midX + p.width * 0.1, p.y + wobble + 2);
-        ctx.lineTo(midX + p.width * 0.25, p.y + wobble + 6);
-        ctx.stroke();
-      }
+      ctx.fillStyle = COLORS.platform;
+      ctx.fillRect(p.x, p.y, p.width, height - p.y);
+      ctx.fillStyle = COLORS.platformEdge;
+      ctx.fillRect(p.x, p.y, p.width, 6);
     }
 
     const pl = s.player;
