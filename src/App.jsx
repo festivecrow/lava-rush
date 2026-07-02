@@ -56,9 +56,11 @@ export default function LavaRush() {
 
   const initGame = useCallback((width, height) => {
     const groundY = height * GROUND_Y_RATIO;
+    const playerX = Math.round(width * 0.32);
+    const startPlatformWidth = Math.max(260, playerX + 150);
     const platforms = [];
-    platforms.push({ x: 0, width: 260, y: groundY });
-    let cursorX = 260;
+    platforms.push({ x: 0, width: startPlatformWidth, y: groundY });
+    let cursorX = startPlatformWidth;
     while (cursorX < width + 400) {
       const gap = rand(55, 100);
       const pw = rand(100, 190);
@@ -69,7 +71,7 @@ export default function LavaRush() {
 
     stateRef.current = {
       width, height, groundY,
-      player: { x: 60, y: groundY - PLAYER_SIZE, vy: 0, onGround: true, rot: 0 },
+      player: { x: playerX, y: groundY - PLAYER_SIZE, vy: 0, onGround: true, rot: 0 },
       platforms,
       particles: [],
       embers: Array.from({ length: 40 }, () => ({
@@ -119,7 +121,7 @@ export default function LavaRush() {
       if (!s) return;
 
       if (lastTime === null) lastTime = timestamp;
-      const dtSeconds = Math.min((timestamp - lastTime) / 1000, 1 / 20); // clamp avoids a huge jump after a paused/backgrounded tab
+      const dtSeconds = Math.min((timestamp - lastTime) / 1000, 1 / 8); // tolerates real frame rates down to 8fps; only an actual backgrounded-tab pause gets clamped
       lastTime = timestamp;
       const frameScale = dtSeconds * 60; // 1.0 at a steady 60fps, scales up/down for other refresh rates
 
@@ -153,15 +155,21 @@ export default function LavaRush() {
       }
 
       const player = s.player;
+      const prevFeetY = player.y + PLAYER_SIZE; // where the player's feet were before this frame's movement
       player.vy += GRAVITY * frameScale;
       player.y += player.vy * frameScale;
       player.rot = player.onGround ? 0 : Math.min(player.rot + 0.09 * frameScale, 0.5);
+      const newFeetY = player.y + PLAYER_SIZE;
 
       let landed = false;
       for (const p of s.platforms) {
         const withinX = player.x + PLAYER_SIZE * 0.7 > p.x && player.x + PLAYER_SIZE * 0.3 < p.x + p.width;
         const platformTop = p.y;
-        if (withinX && player.vy >= 0 && player.y + PLAYER_SIZE >= platformTop && player.y + PLAYER_SIZE <= platformTop + 30) {
+        // Swept check: did the player's feet cross the platform's surface at
+        // any point between last frame and this one? A fixed on-the-spot
+        // check can miss the platform entirely on a big movement step (a
+        // slow device, or a big jump) — this catches it regardless of step size.
+        if (withinX && player.vy >= 0 && prevFeetY <= platformTop && newFeetY >= platformTop) {
           player.y = platformTop - PLAYER_SIZE;
           player.vy = 0;
           player.onGround = true;
