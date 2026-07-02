@@ -17,9 +17,9 @@ const COLORS = {
   chalkDim: '#C9A98F',
 };
 
-const GRAVITY = 0.52;
-const JUMP_VELOCITY = -12;
-const BASE_SCROLL_SPEED = 3.0;
+const GRAVITY = 0.6;
+const JUMP_VELOCITY = -12.75;
+const BASE_SCROLL_SPEED = 3.6;
 const PLAYER_SIZE = 26;
 const GROUND_Y_RATIO = 0.72;
 
