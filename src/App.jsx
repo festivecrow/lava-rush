@@ -1,4 +1,5 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
+import { supabase, SUBMIT_SCORE_URL } from './supabase-client.js';
 
 // ---- Visual theme: Molten Core ----
 const COLORS = {
@@ -46,13 +47,68 @@ export default function LavaRush() {
   const [highScore, setHighScore] = useState(0);
   const [, forceRender] = useState(0);
 
+  const [playerName, setPlayerName] = useState('');
+  const [lastRunDuration, setLastRunDuration] = useState(0);
+  const [submitState, setSubmitState] = useState('idle'); // idle | submitting | done | error
+  const [submitError, setSubmitError] = useState('');
+  const [showLeaderboard, setShowLeaderboard] = useState(false);
+  const [leaderboard, setLeaderboard] = useState([]);
+  const [leaderboardLoading, setLeaderboardLoading] = useState(false);
+
   useEffect(() => {
     loadFont();
     try {
       const saved = localStorage.getItem('lavarush-highscore');
       if (saved) setHighScore(parseInt(saved, 10) || 0);
+      const savedName = localStorage.getItem('lavarush-name');
+      if (savedName) setPlayerName(savedName);
     } catch (e) { /* ignore */ }
   }, []);
+
+  const submitScore = useCallback(async () => {
+    const name = playerName.trim();
+    if (!name) { setSubmitError('Enter your name first.'); return; }
+    setSubmitState('submitting');
+    setSubmitError('');
+    try {
+      localStorage.setItem('lavarush-name', name);
+    } catch (e) { /* ignore */ }
+    try {
+      const res = await fetch(SUBMIT_SCORE_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, score, durationSeconds: lastRunDuration }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setSubmitError(data.error || 'Could not submit score.');
+        setSubmitState('error');
+        return;
+      }
+      setSubmitState('done');
+    } catch (e) {
+      setSubmitError('Network error — try again.');
+      setSubmitState('error');
+    }
+  }, [playerName, score, lastRunDuration]);
+
+  const loadLeaderboard = useCallback(async () => {
+    setLeaderboardLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('lava_rush_scores')
+        .select('name, score, created_at')
+        .order('score', { ascending: false })
+        .limit(20);
+      if (!error) setLeaderboard(data || []);
+    } catch (e) { /* ignore */ }
+    setLeaderboardLoading(false);
+  }, []);
+
+  const openLeaderboard = useCallback(() => {
+    setShowLeaderboard(true);
+    loadLeaderboard();
+  }, [loadLeaderboard]);
 
   const initGame = useCallback((width, height) => {
     const groundY = height * GROUND_Y_RATIO;
@@ -102,11 +158,14 @@ export default function LavaRush() {
     }
   }, [phase]);
 
+  const playStartRef = useRef(null);
+
   const startGame = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     initGame(canvas.width, canvas.height);
     setScore(0);
+    playStartRef.current = performance.now();
     setPhase('playing');
   }, [initGame]);
 
@@ -202,12 +261,15 @@ export default function LavaRush() {
           });
         }
         const finalScore = Math.floor(s.distance / 10);
+        const durationSeconds = playStartRef.current ? (performance.now() - playStartRef.current) / 1000 : 0;
+        setLastRunDuration(durationSeconds);
         setScore(finalScore);
         setHighScore((prev) => {
           const next = Math.max(prev, finalScore);
           try { localStorage.setItem('lavarush-highscore', String(next)); } catch (e) { /* ignore */ }
           return next;
         });
+        setSubmitState('idle');
         setPhase('dead');
         return;
       }
@@ -367,7 +429,7 @@ export default function LavaRush() {
             LAVA RUSH
           </h1>
           <div style={{ fontFamily: BODY_FONT, fontSize: 14, color: COLORS.chalkDim, marginBottom: 28, textAlign: 'center', maxWidth: 280 }}>
-            Tap or press Space to jump. Don't fall behind — it's rising.
+            Tap or press Space to jump. Don't miss a platform.
           </div>
           {highScore > 0 && (
             <div style={{ fontFamily: BODY_FONT, fontSize: 13, color: COLORS.chalkDim, marginBottom: 20 }}>
@@ -380,10 +442,20 @@ export default function LavaRush() {
               background: COLORS.lavaCore, border: 'none', color: COLORS.chalk,
               fontFamily: DISPLAY_FONT, fontSize: 26, letterSpacing: 1,
               padding: '14px 48px', borderRadius: 10, cursor: 'pointer',
-              boxShadow: '0 8px 24px rgba(255,61,0,0.4)',
+              boxShadow: '0 8px 24px rgba(255,61,0,0.4)', marginBottom: 14,
             }}
           >
             START
+          </button>
+          <button
+            onPointerDown={(e) => { e.stopPropagation(); openLeaderboard(); }}
+            style={{
+              background: 'transparent', border: `1px solid ${COLORS.chalkDim}`, color: COLORS.chalkDim,
+              fontFamily: BODY_FONT, fontWeight: 700, fontSize: 13, letterSpacing: 0.5,
+              padding: '9px 24px', borderRadius: 8, cursor: 'pointer',
+            }}
+          >
+            LEADERBOARD
           </button>
         </div>
       )}
@@ -391,7 +463,7 @@ export default function LavaRush() {
       {phase === 'dead' && (
         <div style={{
           position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column',
-          alignItems: 'center', justifyContent: 'center', background: 'rgba(10,5,3,0.65)',
+          alignItems: 'center', justifyContent: 'center', background: 'rgba(10,5,3,0.65)', padding: '0 24px', boxSizing: 'border-box',
         }}>
           <div style={{ fontFamily: BODY_FONT, fontSize: 13, letterSpacing: 3, color: COLORS.lavaGlow, textTransform: 'uppercase', marginBottom: 6 }}>
             Consumed
@@ -399,19 +471,116 @@ export default function LavaRush() {
           <h1 style={{ fontFamily: DISPLAY_FONT, fontSize: 54, color: COLORS.chalk, margin: '0 0 4px' }}>
             {score}
           </h1>
-          <div style={{ fontFamily: BODY_FONT, fontSize: 13, color: COLORS.chalkDim, marginBottom: 24 }}>
+          <div style={{ fontFamily: BODY_FONT, fontSize: 13, color: COLORS.chalkDim, marginBottom: 20 }}>
             {score >= highScore && score > 0 ? 'New best!' : `Best: ${highScore}`}
           </div>
+
+          {submitState === 'done' ? (
+            <div style={{ fontFamily: BODY_FONT, fontSize: 14, color: COLORS.lavaGlow, marginBottom: 20 }}>
+              Score submitted to the leaderboard.
+            </div>
+          ) : (
+            <div style={{ width: '100%', maxWidth: 260, marginBottom: 16 }}>
+              <input
+                type="text"
+                placeholder="Your name"
+                value={playerName}
+                onChange={(e) => setPlayerName(e.target.value)}
+                maxLength={24}
+                style={{
+                  width: '100%', boxSizing: 'border-box', background: 'rgba(255,255,255,0.08)',
+                  border: `1px solid ${COLORS.chalkDim}`, borderRadius: 8, color: COLORS.chalk,
+                  fontFamily: BODY_FONT, fontSize: 14, padding: '10px 12px', marginBottom: 8, outline: 'none',
+                }}
+              />
+              <button
+                onPointerDown={(e) => { e.stopPropagation(); submitScore(); }}
+                disabled={submitState === 'submitting'}
+                style={{
+                  width: '100%', background: 'transparent', border: `1px solid ${COLORS.lavaGlow}`, color: COLORS.lavaGlow,
+                  fontFamily: BODY_FONT, fontWeight: 700, fontSize: 13, letterSpacing: 0.5,
+                  padding: '10px 0', borderRadius: 8, cursor: submitState === 'submitting' ? 'default' : 'pointer',
+                  opacity: submitState === 'submitting' ? 0.6 : 1,
+                }}
+              >
+                {submitState === 'submitting' ? 'SUBMITTING…' : 'SUBMIT TO LEADERBOARD'}
+              </button>
+              {submitState === 'error' && (
+                <div style={{ fontFamily: BODY_FONT, fontSize: 12, color: COLORS.lavaCore, marginTop: 8, textAlign: 'center' }}>
+                  {submitError}
+                </div>
+              )}
+            </div>
+          )}
+
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button
+              onPointerDown={(e) => { e.stopPropagation(); startGame(); }}
+              style={{
+                background: COLORS.lavaCore, border: 'none', color: COLORS.chalk,
+                fontFamily: DISPLAY_FONT, fontSize: 22, letterSpacing: 1,
+                padding: '12px 32px', borderRadius: 10, cursor: 'pointer',
+                boxShadow: '0 8px 24px rgba(255,61,0,0.4)',
+              }}
+            >
+              TRY AGAIN
+            </button>
+            <button
+              onPointerDown={(e) => { e.stopPropagation(); openLeaderboard(); }}
+              style={{
+                background: 'transparent', border: `1px solid ${COLORS.chalkDim}`, color: COLORS.chalkDim,
+                fontFamily: BODY_FONT, fontWeight: 700, fontSize: 12, letterSpacing: 0.5,
+                padding: '12px 18px', borderRadius: 10, cursor: 'pointer',
+              }}
+            >
+              RANKS
+            </button>
+          </div>
+        </div>
+      )}
+
+      {showLeaderboard && (
+        <div
+          style={{
+            position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column',
+            alignItems: 'center', justifyContent: 'center', background: 'rgba(10,5,3,0.85)', padding: '32px 24px', boxSizing: 'border-box',
+          }}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          <div style={{ fontFamily: DISPLAY_FONT, fontSize: 30, color: COLORS.chalk, marginBottom: 16, letterSpacing: 1 }}>
+            LEADERBOARD
+          </div>
+          <div style={{ width: '100%', maxWidth: 280, maxHeight: 320, overflowY: 'auto', marginBottom: 20 }}>
+            {leaderboardLoading && (
+              <div style={{ fontFamily: BODY_FONT, fontSize: 13, color: COLORS.chalkDim, textAlign: 'center' }}>Loading…</div>
+            )}
+            {!leaderboardLoading && leaderboard.length === 0 && (
+              <div style={{ fontFamily: BODY_FONT, fontSize: 13, color: COLORS.chalkDim, textAlign: 'center' }}>No scores yet — be the first.</div>
+            )}
+            {leaderboard.map((row, i) => (
+              <div key={i} style={{
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                padding: '8px 10px', borderBottom: '1px solid rgba(255,255,255,0.08)',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ fontFamily: DISPLAY_FONT, fontSize: 16, color: i < 3 ? COLORS.lavaGlow : COLORS.chalkDim, minWidth: 22 }}>
+                    {i + 1}
+                  </span>
+                  <span style={{ fontFamily: BODY_FONT, fontSize: 14, color: COLORS.chalk }}>{row.name}</span>
+                </div>
+                <span style={{ fontFamily: DISPLAY_FONT, fontSize: 18, color: COLORS.chalk }}>{row.score}</span>
+              </div>
+            ))}
+          </div>
           <button
-            onPointerDown={(e) => { e.stopPropagation(); startGame(); }}
+            onPointerDown={(e) => { e.stopPropagation(); setShowLeaderboard(false); }}
             style={{
-              background: COLORS.lavaCore, border: 'none', color: COLORS.chalk,
-              fontFamily: DISPLAY_FONT, fontSize: 24, letterSpacing: 1,
-              padding: '13px 44px', borderRadius: 10, cursor: 'pointer',
-              boxShadow: '0 8px 24px rgba(255,61,0,0.4)',
+              background: 'transparent', border: `1px solid ${COLORS.chalkDim}`, color: COLORS.chalkDim,
+              fontFamily: BODY_FONT, fontWeight: 700, fontSize: 13, letterSpacing: 0.5,
+              padding: '9px 28px', borderRadius: 8, cursor: 'pointer',
             }}
           >
-            TRY AGAIN
+            CLOSE
           </button>
         </div>
       )}
