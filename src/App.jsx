@@ -112,20 +112,27 @@ export default function LavaRush() {
     if (phase !== 'playing') return;
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
+    let lastTime = null;
 
-    const loop = () => {
+    const loop = (timestamp) => {
       const s = stateRef.current;
       if (!s) return;
-      s.elapsed += 1;
-      s.scrollSpeed = BASE_SCROLL_SPEED + Math.min(s.elapsed / 1000, 2.8);
-      s.distance += s.scrollSpeed;
 
-      for (const p of s.platforms) p.x -= s.scrollSpeed;
-      s.lastPlatformRight -= s.scrollSpeed;
+      if (lastTime === null) lastTime = timestamp;
+      const dtSeconds = Math.min((timestamp - lastTime) / 1000, 1 / 20); // clamp avoids a huge jump after a paused/backgrounded tab
+      lastTime = timestamp;
+      const frameScale = dtSeconds * 60; // 1.0 at a steady 60fps, scales up/down for other refresh rates
+
+      s.elapsed += frameScale;
+      s.scrollSpeed = BASE_SCROLL_SPEED + Math.min(s.elapsed / 1000, 2.8);
+      s.distance += s.scrollSpeed * frameScale;
+
+      for (const p of s.platforms) p.x -= s.scrollSpeed * frameScale;
+      s.lastPlatformRight -= s.scrollSpeed * frameScale;
       for (const e of s.embers) {
-        e.x -= s.scrollSpeed * 0.4;
-        e.y -= e.speed;
-        e.x += e.drift;
+        e.x -= s.scrollSpeed * 0.4 * frameScale;
+        e.y -= e.speed * frameScale;
+        e.x += e.drift * frameScale;
         if (e.y < -10) { e.y = s.height + 10; e.x = rand(0, s.width); }
         if (e.x < -10) e.x = s.width + 10;
       }
@@ -146,9 +153,9 @@ export default function LavaRush() {
       }
 
       const player = s.player;
-      player.vy += GRAVITY;
-      player.y += player.vy;
-      player.rot = player.onGround ? 0 : Math.min(player.rot + 0.09, 0.5);
+      player.vy += GRAVITY * frameScale;
+      player.y += player.vy * frameScale;
+      player.rot = player.onGround ? 0 : Math.min(player.rot + 0.09 * frameScale, 0.5);
 
       let landed = false;
       for (const p of s.platforms) {
@@ -171,7 +178,7 @@ export default function LavaRush() {
 
       for (const p of s.platforms) {
         if (p.cracking) {
-          p.crackTimer -= 1;
+          p.crackTimer -= frameScale;
           if (p.crackTimer <= 0) p.collapsed = true;
         }
       }
@@ -184,10 +191,10 @@ export default function LavaRush() {
 
       s.particles = s.particles.filter((pt) => pt.life > 0);
       for (const pt of s.particles) {
-        pt.x += pt.vx; pt.y += pt.vy; pt.vy += 0.15; pt.life -= 0.04;
+        pt.x += pt.vx * frameScale; pt.y += pt.vy * frameScale; pt.vy += 0.15 * frameScale; pt.life -= 0.04 * frameScale;
       }
 
-      if (s.shake > 0) s.shake *= 0.85;
+      if (s.shake > 0) s.shake *= Math.pow(0.85, frameScale);
 
       if (dead) {
         s.shake = 14;
