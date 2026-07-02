@@ -78,7 +78,6 @@ export default function LavaRush() {
       scrollSpeed: BASE_SCROLL_SPEED,
       distance: 0,
       lavaY: height * 0.97,
-      lavaChasePressure: 0,
       shake: 0,
       elapsed: 0,
       lastPlatformRight: cursorX,
@@ -178,16 +177,9 @@ export default function LavaRush() {
       }
       s.platforms = s.platforms.filter((p) => !p.collapsed || p.x > s.width);
 
-      const playerLowRatio = player.y / s.height;
-      if (playerLowRatio > 0.62) {
-        s.lavaChasePressure = Math.min(s.lavaChasePressure + 0.025, 1.1);
-      } else {
-        s.lavaChasePressure = Math.max(s.lavaChasePressure - 0.025, 0.08);
-      }
-      s.lavaY -= (0.16 + s.lavaChasePressure * 0.35);
-      const lavaFloor = s.height * 0.985;
-      if (s.lavaY > lavaFloor) s.lavaY = lavaFloor;
-
+      // Lava is a fixed hazard at the bottom, not a rising clock. Death only
+      // comes from actually missing a jump — never from running out of time
+      // no matter how well you're playing.
       const dead = player.y + PLAYER_SIZE > s.lavaY || player.y > s.height + 100;
 
       s.particles = s.particles.filter((pt) => pt.life > 0);
