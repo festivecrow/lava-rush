@@ -242,10 +242,24 @@ export default function LavaRush() {
 
     for (const p of s.platforms) {
       const wobble = p.cracking ? Math.sin(p.crackTimer * 2) * 2 : 0;
-      ctx.fillStyle = p.cracking ? COLORS.platformCracked : COLORS.platform;
+      const isHazard = p.cracked; // visible warning the moment it exists, before you ever land on it
+      ctx.fillStyle = p.cracking ? COLORS.platformCracked : (isHazard ? '#3D2418' : COLORS.platform);
       ctx.fillRect(p.x, p.y + wobble, p.width, height - (p.y + wobble));
-      ctx.fillStyle = p.cracking ? COLORS.lavaCore : COLORS.platformEdge;
+      ctx.fillStyle = p.cracking ? COLORS.lavaCore : (isHazard ? COLORS.lavaGlow : COLORS.platformEdge);
       ctx.fillRect(p.x, p.y + wobble, p.width, 6);
+
+      if (isHazard && !p.cracking) {
+        // Jagged crack lines across the surface — a clear "this will give way" signal
+        ctx.strokeStyle = COLORS.lavaGlow;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        const midX = p.x + p.width / 2;
+        ctx.moveTo(midX - p.width * 0.25, p.y + wobble);
+        ctx.lineTo(midX - p.width * 0.08, p.y + wobble + 5);
+        ctx.lineTo(midX + p.width * 0.1, p.y + wobble + 2);
+        ctx.lineTo(midX + p.width * 0.25, p.y + wobble + 6);
+        ctx.stroke();
+      }
     }
 
     const pl = s.player;
