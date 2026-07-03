@@ -65,9 +65,11 @@ export default function LavaRush() {
     } catch (e) { /* ignore */ }
   }, []);
 
-  const submitScore = useCallback(async () => {
+  const submitScore = useCallback(async (overrideScore, overrideDuration) => {
     const name = playerName.trim();
     if (!name) { setSubmitError('Enter your name first.'); return; }
+    const scoreToSend = overrideScore !== undefined ? overrideScore : score;
+    const durationToSend = overrideDuration !== undefined ? overrideDuration : lastRunDuration;
     setSubmitState('submitting');
     setSubmitError('');
     try {
@@ -77,7 +79,7 @@ export default function LavaRush() {
       const res = await fetch(SUBMIT_SCORE_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, score, durationSeconds: lastRunDuration }),
+        body: JSON.stringify({ name, score: scoreToSend, durationSeconds: durationToSend }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -109,6 +111,16 @@ export default function LavaRush() {
     setShowLeaderboard(true);
     loadLeaderboard();
   }, [loadLeaderboard]);
+
+  const submitSavedBest = useCallback(() => {
+    if (!playerName.trim()) { setSubmitError('Enter your name first.'); setSubmitState('error'); return; }
+    if (highScore <= 0) { setSubmitError('No saved best to submit yet.'); setSubmitState('error'); return; }
+    // We don't know the real duration of that earlier run since it wasn't
+    // tracked at the time — a generous fixed duration keeps the
+    // plausibility check from rejecting a real score we have no exact
+    // timing for, without disabling the check entirely.
+    submitScore(highScore, 1800);
+  }, [playerName, highScore, submitScore]);
 
   // Auto-submit the instant a run ends — but only for returning players who
   // already had a name saved before this run began. First-time players
@@ -463,6 +475,49 @@ export default function LavaRush() {
           >
             START
           </button>
+
+          {highScore > 0 && submitState !== 'done' && (
+            <div style={{ width: '100%', maxWidth: 240, marginBottom: 14 }}>
+              {!playerName.trim() && (
+                <input
+                  type="text"
+                  placeholder="Your name"
+                  value={playerName}
+                  onChange={(e) => { e.stopPropagation(); setPlayerName(e.target.value); }}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  maxLength={24}
+                  style={{
+                    width: '100%', boxSizing: 'border-box', background: 'rgba(255,255,255,0.08)',
+                    border: `1px solid ${COLORS.chalkDim}`, borderRadius: 8, color: COLORS.chalk,
+                    fontFamily: BODY_FONT, fontSize: 13, padding: '8px 10px', marginBottom: 6, outline: 'none',
+                  }}
+                />
+              )}
+              <button
+                onPointerDown={(e) => { e.stopPropagation(); submitSavedBest(); }}
+                disabled={submitState === 'submitting'}
+                style={{
+                  width: '100%', background: 'transparent', border: `1px solid ${COLORS.lavaGlow}`, color: COLORS.lavaGlow,
+                  fontFamily: BODY_FONT, fontWeight: 700, fontSize: 12, letterSpacing: 0.5,
+                  padding: '9px 0', borderRadius: 8, cursor: submitState === 'submitting' ? 'default' : 'pointer',
+                  opacity: submitState === 'submitting' ? 0.6 : 1,
+                }}
+              >
+                {submitState === 'submitting' ? 'SUBMITTING…' : `SUBMIT SAVED BEST (${highScore})`}
+              </button>
+              {submitState === 'error' && (
+                <div style={{ fontFamily: BODY_FONT, fontSize: 11, color: COLORS.lavaCore, marginTop: 6, textAlign: 'center' }}>
+                  {submitError}
+                </div>
+              )}
+            </div>
+          )}
+          {submitState === 'done' && (
+            <div style={{ fontFamily: BODY_FONT, fontSize: 12, color: COLORS.lavaGlow, marginBottom: 14 }}>
+              Saved best submitted.
+            </div>
+          )}
+
           <button
             onPointerDown={(e) => { e.stopPropagation(); openLeaderboard(); }}
             style={{
