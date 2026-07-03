@@ -110,6 +110,18 @@ export default function LavaRush() {
     loadLeaderboard();
   }, [loadLeaderboard]);
 
+  // Auto-submit the instant a run ends — but only for returning players who
+  // already had a name saved before this run began. First-time players
+  // still see the name field once; every run after that submits automatically,
+  // so a great run can never go uncounted just because someone rushed to
+  // hit "try again" without noticing the submit button.
+  useEffect(() => {
+    if (phase === 'dead' && nameAtRunStartRef.current && !autoSubmittedRef.current) {
+      autoSubmittedRef.current = true;
+      submitScore();
+    }
+  }, [phase, submitScore]);
+
   const initGame = useCallback((width, height) => {
     const groundY = height * GROUND_Y_RATIO;
     const playerX = Math.round(width * 0.32);
@@ -159,6 +171,8 @@ export default function LavaRush() {
   }, [phase]);
 
   const playStartRef = useRef(null);
+  const nameAtRunStartRef = useRef('');
+  const autoSubmittedRef = useRef(false);
 
   const startGame = useCallback(() => {
     const canvas = canvasRef.current;
@@ -166,8 +180,10 @@ export default function LavaRush() {
     initGame(canvas.width, canvas.height);
     setScore(0);
     playStartRef.current = performance.now();
+    nameAtRunStartRef.current = playerName.trim();
+    autoSubmittedRef.current = false;
     setPhase('playing');
-  }, [initGame]);
+  }, [initGame, playerName]);
 
   useEffect(() => {
     if (phase !== 'playing') return;
@@ -475,7 +491,11 @@ export default function LavaRush() {
             {score >= highScore && score > 0 ? 'New best!' : `Best: ${highScore}`}
           </div>
 
-          {submitState === 'done' ? (
+          {nameAtRunStartRef.current && submitState !== 'error' ? (
+            <div style={{ fontFamily: BODY_FONT, fontSize: 14, color: COLORS.lavaGlow, marginBottom: 20 }}>
+              {submitState === 'done' ? 'Submitted to the leaderboard.' : 'Submitting…'}
+            </div>
+          ) : submitState === 'done' ? (
             <div style={{ fontFamily: BODY_FONT, fontSize: 14, color: COLORS.lavaGlow, marginBottom: 20 }}>
               Score submitted to the leaderboard.
             </div>
